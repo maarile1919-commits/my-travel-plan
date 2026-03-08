@@ -220,10 +220,11 @@
   <script type="text/babel">
     const { useState, useEffect, useRef } = React;
 
-    const GEMINI_API_KEY = 'AIzaSyAK9BV5Xr5P72P9Mllv8IUpjzHdXxW6cRM';
+    // Vercel 등 빌드 환경 대응 (process.env 사용) 및 폴백 처리
+    const GEMINI_API_KEY = (typeof process !== 'undefined' && process.env && (process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY)) || 'AIzaSyAK9BV5Xr5P72P9Mllv8IUpjzHdXxW6cRM';
 
     async function callGemini(prompt) {
-      if (!GEMINI_API_KEY || GEMINI_API_KEY === '여기에_아까_복사한_키를_넣으세요') {
+      if (!GEMINI_API_KEY || GEMINI_API_KEY === 'AIzaSyAK9BV5Xr5P72P9Mllv8IUpjzHdXxW6cRM') {
         throw new Error("GEMINI_API_KEY가 설정되지 않았습니다. 코드를 수정해주세요.");
       }
       try {
@@ -421,6 +422,7 @@
 
       // Step 1 UI State
       const [isLoading, setIsLoading] = useState(false);
+      const [step1Error, setStep1Error] = useState('');
       const [destData, setDestData] = useState(null);
       const summaryRef = useRef(null);
 
@@ -501,7 +503,7 @@
           }]);
         } catch (error) {
           console.error("4단계 초기 일정 생성 Error:", error);
-          setChatLogs([{ role: 'ai', text: '일정을 생성하는 중 오류가 발생했습니다. 개발자도구 콘솔(F12)을 확인해주세요.' }]);
+          setChatLogs([{ role: 'ai', isError: true, text: `API 호출 실패: ${error.message || '네트워크 오류'}` }]);
         }
         scrollToBottom();
       };
@@ -513,6 +515,7 @@
         if (!isStep1Valid) return;
         setIsLoading(true);
         setDestData(null);
+        setStep1Error('');
         // Scroll slightly down to make room for loading
         setTimeout(() => window.scrollBy({ top: 200, behavior: 'smooth' }), 50);
 
@@ -531,7 +534,7 @@
           setDestData(JSON.parse(responseText));
         } catch (error) {
           console.error("1단계 Gemini API Error:", error);
-          alert("요약 정보를 불러오지 못했습니다. API 키나 네트워크를 확인해주세요.");
+          setStep1Error(`API 호출 실패: ${error.message || '네트워크 오류'}`);
         } finally {
           setIsLoading(false);
           setTimeout(() => summaryRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 100);
@@ -654,6 +657,11 @@
                 </div>
 
                 {isLoading && <LoadingCard />}
+                {step1Error && (
+                  <div className="mt-4 p-4 mx-4 bg-rose-50 border border-rose-200 rounded-2xl text-rose-600 font-bold text-center text-[13px] shadow-sm animate-fade-in break-keep">
+                    {step1Error}
+                  </div>
+                )}
 
                 <div ref={summaryRef}>
                   <SummaryCard
@@ -825,6 +833,14 @@
                             {log.text}
                           </div>
                         </div>
+                      ) : log.isError || (!log.itinerary && log.text) ? (
+                        <div className="flex justify-start mb-6 animate-fade-in w-full max-w-full">
+                          <div className="w-8 h-8 rounded-full bg-brand-400 flex items-center justify-center text-white text-[16px] mr-2 md:mr-3 mt-1 shadow-sm shrink-0">🤖</div>
+                          <div className={`p-4 rounded-2xl rounded-tl-sm shadow-md border leading-relaxed font-bold break-words text-[14px]
+                            ${log.isError ? 'bg-rose-50 border-rose-200 text-rose-600' : 'bg-white border-slate-200 text-slate-800'}`}>
+                            {log.text}
+                          </div>
+                        </div>
                       ) : (
                         <div className="flex justify-start mb-6 animate-fade-in w-full max-w-full">
                           <div className="w-8 h-8 rounded-full bg-brand-400 flex items-center justify-center text-white text-[16px] mr-2 md:mr-3 mt-1 shadow-sm shrink-0">🤖</div>
@@ -935,7 +951,7 @@ ${JSON.stringify(baseItin)}
                       console.error("채팅 업데이트 실패:", error);
                       setChatLogs(prev => {
                         const newLogs = prev.filter(l => !l.isAnalyzing);
-                        return [...newLogs, { role: 'ai', text: '현재 API 서버에서 요청을 지연 처리 중입니다. 잠시 후 다시 시도해주세요. (Error 찍힘)' }];
+                        return [...newLogs, { role: 'ai', isError: true, text: `API 호출 실패: ${error.message || '네트워크 오류'}` }];
                       });
                     }
                     scrollToBottom();
